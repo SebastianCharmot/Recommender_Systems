@@ -230,9 +230,7 @@ def calc_pearson(prefs, p1,p2):
     # Here we are calculating the numerator for Pearson
     num = float(0)
     for sim_movie in si:
-        # print((prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg))
         num += (prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg)
-        print((prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg))
 
     # Here we are calculating the denominator for Pearson
     den_lft = float(0)
@@ -273,6 +271,52 @@ def sim_pearson(prefs):
     ## Look at the sim_distance() function for ideas.
     ##
 
+def getRecommendations(prefs,person,similarity=calc_pearson):
+    '''
+        Calculates recommendations for a given user 
+
+        Parameters:
+        -- prefs: dictionary containing user-item matrix
+        -- person: string containing name of user
+        -- similarity: function to calc similarity (sim_pearson is default)
+        
+        Returns:
+        -- A list of recommended items with 0 or more tuples, 
+           each tuple contains (predicted rating, item name).
+           List is sorted, high to low, by predicted rating.
+           An empty list is returned when no recommendations have been calc'd.
+        
+    '''
+    
+    totals={}
+    simSums={}
+    for other in prefs:
+      # don't compare me to myself
+        if other==person: 
+            continue
+        sim=similarity(prefs,person,other)
+    
+        # ignore scores of zero or lower
+        if sim<=0: continue
+        for item in prefs[other]:
+            
+            # only score movies I haven't seen yet
+            if item not in prefs[person] or prefs[person][item]==0:
+                # Similarity * Score
+                totals.setdefault(item,0)
+                totals[item]+=prefs[other][item]*sim
+                # Sum of similarities
+                simSums.setdefault(item,0)
+                simSums[item]+=sim
+  
+    # Create the normalized list
+    rankings=[(float('%.3f'%(total/simSums[item])),item) for item,total in totals.items()]
+  
+    # Return the sorted list
+    rankings.sort()
+    rankings.reverse()
+    return rankings
+
 def main():
     ''' User interface for Python console '''
     
@@ -292,7 +336,8 @@ def main():
                         'S(tats) for key statistics,'
                         'I(tems) that are popular,'
                         'D(istance) critics data, '
-                        'PC(earson Correlation) critics data? ')
+                        'PC(earson Correlation) critics data?, '
+                        'U(ser-based CF Recommendations)? ')
         
         if file_io == 'R' or file_io == 'r':
             print()
@@ -361,6 +406,21 @@ def main():
             else:
                 print ('Empty dictionary, R(ead) in some data!')          
 
+        elif file_io == 'U' or file_io == 'u':
+            print()
+            if len(prefs) > 0:    
+                print("Recommendations Using Pearson: ")  
+                for user in prefs.keys():
+                    print(user + ": " + str(getRecommendations(prefs,user)))
+                print()
+                print("Recommendations Using Euclidean Distance: ")  
+                for user in prefs.keys():
+                    print(user + ": " + str(getRecommendations(prefs,user,sim_distance)))
+                print()
+              
+            else:
+                print ('Empty dictionary, R(ead) in some data!')            
+            
         else:
             done = True
     
