@@ -208,6 +208,71 @@ def euclidean_distance(prefs):
     df.sort_values(by=['Euclidean_Distance'], inplace=True, ascending=False)
     print(df.to_string(index = False))
 
+def calc_pearson(prefs, p1,p2):
+    si=[]
+    for item in prefs[p1]: 
+        if item in prefs[p2]: 
+            si.append(item)
+    
+    # if they have no ratings in common, return 0
+    if len(si)==0: 
+        return 0
+    
+    #We are adding the ratings of the users to calc average
+    p1_ratings = []
+    p2_ratings = []
+    for movie in si:
+         p1_ratings.append(prefs[p1][movie])
+         p2_ratings.append(prefs[p2][movie])
+    p1_avg = np.average(p1_ratings)
+    p2_avg = np.average(p2_ratings)
+
+    # Here we are calculating the numerator for Pearson
+    num = float(0)
+    for sim_movie in si:
+        # print((prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg))
+        num += (prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg)
+        print((prefs[p1][sim_movie]-p1_avg)*(prefs[p2][sim_movie]-p2_avg))
+
+    # Here we are calculating the denominator for Pearson
+    den_lft = float(0)
+    den_rht = float(0)
+    for si_movie in si:
+        den_lft += (prefs[p1][si_movie]-p1_avg)**2
+        den_rht += (prefs[p2][si_movie]-p2_avg)**2
+    den = sqrt(den_lft)*sqrt(den_rht)
+
+    return float(num/den)
+
+def sim_pearson(prefs):
+
+    print("Pearson Correlation For All Users:")
+    print()
+    # Creating our list of users
+    users = []
+    for user in prefs.keys():
+        users.append(user)
+    # Generating combinations of size two for euclidean distance
+    user_comparisons = list(combinations(users, 2))
+    # Empty data frame
+    df = pd.DataFrame({"Person_1":[], "Person_2":[], "Pearson_Correlation":[]}) 
+    # Populating the data frame with the users and their euclidean distance
+
+    for pair in user_comparisons:
+        df_current = pd.DataFrame({"Person_1":[pair[0]], "Person_2":[pair[1]], "Pearson_Correlation":[str(round(calc_pearson(prefs,pair[0],pair[1]),3))]})
+        df = df.append(df_current, ignore_index=True)
+
+    # Sort the data frame by euclidean distance in descending order
+    df.sort_values(by=['Pearson_Correlation'], inplace=True, ascending=False)
+    print(df.to_string(index = False))
+    ## place your code here!
+    ##
+    ## REQUIREMENT! For this function, calculate the pearson correlation
+    ## "longhand", i.e, calc both numerator and denominator as indicated in the
+    ## formula. You can use sqrt (from math module), and average from numpy.
+    ## Look at the sim_distance() function for ideas.
+    ##
+
 def main():
     ''' User interface for Python console '''
     
@@ -226,7 +291,8 @@ def main():
                         'V(alidate) the dictionary?, '
                         'S(tats) for key statistics,'
                         'I(tems) that are popular,'
-                        'D(istance) critics data? ')
+                        'D(istance) critics data, '
+                        'PC(earson Correlation) critics data? ')
         
         if file_io == 'R' or file_io == 'r':
             print()
@@ -285,14 +351,16 @@ def main():
             print()
             if len(prefs) > 0:     
                 print(euclidean_distance(prefs))       
-                # print('Examples:')
-                # print ('Distance sim Lisa & Gene:', sim_distance(prefs, 'Lisa', 'Gene')) # 0.29429805508554946
-                # num=1
-                # den=(1+ sqrt( (2.5-3.0)**2 + (3.5-3.5)**2 + (3.0-1.5)**2 + (3.5-5.0)**2 + (3.0-3.0)**2 + (2.5-3.5)**2))
-                # print('Distance sim Lisa & Gene (check):', num/den)    
-                # print ('Distance sim Lisa & Michael:', sim_distance(prefs, 'Lisa', 'Michael')) # 0.4721359549995794
-                # print()
-                # print('User-User distance similarities:')
+           
+        elif file_io == 'PC' or file_io == 'pc':
+            print()
+            if len(prefs) > 0:    
+                sim_pearson(prefs)
+                print()
+                
+            else:
+                print ('Empty dictionary, R(ead) in some data!')          
+
         else:
             done = True
     
