@@ -240,7 +240,10 @@ def calc_pearson(prefs, p1,p2):
         den_rht += (prefs[p2][si_movie]-p2_avg)**2
     den = sqrt(den_lft)*sqrt(den_rht)
 
-    return float(num/den)
+    if den != 0:
+        return float(num/den)
+    else:
+        return 0
 
 def sim_pearson(prefs):
 
@@ -317,6 +320,46 @@ def getRecommendations(prefs,person,similarity=calc_pearson):
     rankings.reverse()
     return rankings
 
+def loo_cv(prefs, metric, sim, algo):
+    """
+    Leave_One_Out Evaluation: evaluates recommender system ACCURACY
+     
+     Parameters:
+         prefs dataset: critics, ml-100K, etc.
+	 metric: MSE, MAE, RMSE, etc.
+	 sim: distance, pearson, etc.
+	 algo: user-based recommender, item-based recommender, etc.
+	 
+    Returns:
+         error_total: MSE, MAE, RMSE totals for this set of conditions
+	 error_list: list of actual-predicted differences
+    
+    Create a temp copy of prefs
+    For each user in prefs:
+       for item in each user's profile:
+          delete this item
+          get recommendation (aka prediction) list
+	  select the recommendation for this item from the list returned
+          calc error, save into error list
+	  restore this item
+    return mean error, error list
+    """
+    error = 0
+    err_list = []
+    for user in prefs:
+        for item in prefs[user]:
+            to_restore = prefs[user][item]
+            print(to_restore)
+            del prefs[user][item]
+            recs = getRecommendations(prefs,user,sim)
+            for rec in recs:
+                if rec[1] == item:
+                    err_list.append(to_restore - rec[0])
+                    error += (to_restore - rec[0])**2
+            prefs[user][item] = to_restore
+    error = error / len(err_list)
+    return error, err_list
+
 def main():
     ''' User interface for Python console '''
     
@@ -337,7 +380,8 @@ def main():
                         'I(tems) that are popular,'
                         'D(istance) critics data, '
                         'PC(earson Correlation) critics data?, '
-                        'U(ser-based CF Recommendations)? ')
+                        'U(ser-based CF Recommendations)?, '
+                        'LCV(eave one out cross-validation)? ')
         
         if file_io == 'R' or file_io == 'r':
             print()
@@ -417,9 +461,18 @@ def main():
                 for user in prefs.keys():
                     print(user + ": " + str(getRecommendations(prefs,user,sim_distance)))
                 print()
-              
             else:
-                print ('Empty dictionary, R(ead) in some data!')            
+                print ('Empty dictionary, R(ead) in some data!')   
+        elif file_io == 'LCV' or file_io == 'lcv':
+            print()
+            if len(prefs) > 0:             
+                print ('Example:')            
+                ## add some code here to calc LOOCV 
+                ## write a new function to do this ..
+                # error, error_list = loo_cv(prefs, metric, sim, algo)
+                print(loo_cv(prefs, "MSE", calc_pearson,"user-based"))
+            else:
+                print ('Empty dictionary, R(ead) in some data!')         
             
         else:
             done = True

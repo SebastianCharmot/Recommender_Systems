@@ -1,70 +1,38 @@
 '''
-Calculate User-based CF Recommendations
+Calculate LOOCV
 
 << Insert the code below into your recommendations.py >>
 
 '''
 
-################################################################################
-
-## These two defs are here only to prevent a Python error message when running
-## this code. Your code should already have completed versions of these functions,
-## so you don't need to insert these def's into your recommendations.py!!
-def sim_distance(prefs, person1, person2):
-    pass
-def sim_pearson(prefs, person1, person2):
-    pass
-
-################################################################################
-
-## add tbis function to the other set of functions
-# Gets recommendations for a person by using a weighted average
-# of every other user's rankings
-def getRecommendations(prefs,person,similarity=sim_pearson):
-    '''
-        Calculates recommendations for a given user 
-
-        Parameters:
-        -- prefs: dictionary containing user-item matrix
-        -- person: string containing name of user
-        -- similarity: function to calc similarity (sim_pearson is default)
-        
-        Returns:
-        -- A list of recommended items with 0 or more tuples, 
-           each tuple contains (predicted rating, item name).
-           List is sorted, high to low, by predicted rating.
-           An empty list is returned when no recommendations have been calc'd.
-        
-    '''
+## add this function to the other set of functions
+# Compute Leave_One_Out evaluation
+def loo_cv(prefs, metric, sim, algo):
+    """
+    Leave_One_Out Evaluation: evaluates recommender system ACCURACY
+     
+     Parameters:
+         prefs dataset: critics, ml-100K, etc.
+	 metric: MSE, MAE, RMSE, etc.
+	 sim: distance, pearson, etc.
+	 algo: user-based recommender, item-based recommender, etc.
+	 
+    Returns:
+         error_total: MSE, MAE, RMSE totals for this set of conditions
+	 error_list: list of actual-predicted differences
     
-    totals={}
-    simSums={}
-    for other in prefs:
-      # don't compare me to myself
-        if other==person: 
-            continue
-        sim=similarity(prefs,person,other)
+    Create a temp copy of prefs
+    For each user in prefs:
+       for item in each user's profile:
+          delete this item
+          get recommendation (aka prediction) list
+	  select the recommendation for this item from the list returned
+          calc error, save into error list
+	  restore this item
+    return mean error, error list
+    """
     
-        # ignore scores of zero or lower
-        if sim<=0: continue
-        for item in prefs[other]:
-            
-            # only score movies I haven't seen yet
-            if item not in prefs[person] or prefs[person][item]==0:
-                # Similarity * Score
-                totals.setdefault(item,0)
-                totals[item]+=prefs[other][item]*sim
-                # Sum of similarities
-                simSums.setdefault(item,0)
-                simSums[item]+=sim
-  
-    # Create the normalized list
-    rankings=[(float('%.3f'%(total/simSums[item])),item) for item,total in totals.items()]
-  
-    # Return the sorted list
-    rankings.sort()
-    rankings.reverse()
-    return rankings
+    return error, error_list
                 
 def main():
 
@@ -76,46 +44,16 @@ def main():
         
         ## add this new command to the list of commands as an elif
         
-        file_io = input('U(ser-based CF Recommendations)? ') 
+        file_io = input('LCV(eave one out cross-validation)? ') 
         
         # Testing the code ..
-        if file_io == 'U' or file_io == 'u':
+        if file_io == 'LCV' or file_io == 'lcv':
             print()
             if len(prefs) > 0:             
-                print ('Example:')
-                user_name = 'Toby'
-                print ('User-based CF recs for %s, sim_pearson: ' % (user_name), 
-                       getRecommendations(prefs, user_name)) 
-                        # [(3.348, 'The Night Listener'), 
-                        #  (2.833, 'Lady in the Water'), 
-                        #  (2.531, 'Just My Luck')]
-                print ('User-based CF recs for %s, sim_distance: ' % (user_name),
-                       getRecommendations(prefs, user_name, similarity=sim_distance)) 
-                        # [(3.457, 'The Night Listener'), 
-                        #  (2.779, 'Lady in the Water'), 
-                        #  (2.422, 'Just My Luck')]
-                print()
-                
-                print('User-based CF recommendations for all users:')
-                # Calc User-based CF recommendations for all users
-        
-                ## add some code here to calc User-based CF recommendations 
+                print ('Example:')            
+                ## add some code here to calc LOOCV 
                 ## write a new function to do this ..
-                ## def get_all_UU_recs(prefs, sim=sim_pearson, num_users=10, top_N=5):
-                ##    ''' 
-                ##    Print user-based CF recommendations for all users in dataset
-                ##
-                ##    Parameters
-                ##    -- prefs: nested dictionary containing a U-I matrix
-                ##    -- sim: similarity function to use (default = sim_pearson)
-                ##    -- num_users: max number of users to print (default = 10)
-                ##    -- top_N: max number of recommendations to print per user (default = 5)
-                ##
-                ##    Returns: None
-                ##    '''
-                
-                print()
-                
+                error, error_list = loo_cv(prefs, metric, sim, algo)
             else:
                 print ('Empty dictionary, R(ead) in some data!')            
             
