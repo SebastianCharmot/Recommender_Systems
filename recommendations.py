@@ -15,6 +15,7 @@ import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 from math import sqrt 
 from itertools import combinations
+import pickle
 
 
 def from_file_to_dict(path, datafile, itemfile):
@@ -208,7 +209,7 @@ def euclidean_distance(prefs):
     df.sort_values(by=['Euclidean_Distance'], inplace=True, ascending=False)
     print(df.to_string(index = False))
 
-def calc_pearson(prefs, p1,p2):
+def sim_pearson(prefs, p1,p2):
     si=[]
     for item in prefs[p1]: 
         if item in prefs[p2]: 
@@ -245,7 +246,7 @@ def calc_pearson(prefs, p1,p2):
     else:
         return 0
 
-def sim_pearson(prefs):
+def calc_pearson(prefs):
 
     print("Pearson Correlation For All Users:")
     print()
@@ -260,7 +261,7 @@ def sim_pearson(prefs):
     # Populating the data frame with the users and their euclidean distance
 
     for pair in user_comparisons:
-        df_current = pd.DataFrame({"Person_1":[pair[0]], "Person_2":[pair[1]], "Pearson_Correlation":[str(round(calc_pearson(prefs,pair[0],pair[1]),3))]})
+        df_current = pd.DataFrame({"Person_1":[pair[0]], "Person_2":[pair[1]], "Pearson_Correlation":[str(round(sim_pearson(prefs,pair[0],pair[1]),3))]})
         df = df.append(df_current, ignore_index=True)
 
     # Sort the data frame by euclidean distance in descending order
@@ -274,7 +275,7 @@ def sim_pearson(prefs):
     ## Look at the sim_distance() function for ideas.
     ##
 
-def getRecommendations(prefs,person,similarity=calc_pearson):
+def getRecommendations(prefs,person,similarity=sim_pearson):
     '''
         Calculates recommendations for a given user 
 
@@ -313,7 +314,7 @@ def getRecommendations(prefs,person,similarity=calc_pearson):
                 simSums[item]+=sim
   
     # Create the normalized list
-    rankings=[(float('%.3f'%(total/simSums[item])),item) for item,total in totals.items()]
+    rankings=[(total/simSums[item],item) for item,total in totals.items()]
   
     # Return the sorted list
     rankings.sort()
@@ -344,21 +345,211 @@ def loo_cv(prefs, metric, sim, algo):
 	  restore this item
     return mean error, error list
     """
-    error = 0
+    # Copy and nested copy
+    copy = prefs.copy()
+    sq_error = 0
+    abs_error = 0
     err_list = []
     for user in prefs:
+        copy[user] = prefs[user].copy()
+    for user in prefs:
         for item in prefs[user]:
-            to_restore = prefs[user][item]
-            print(to_restore)
-            del prefs[user][item]
-            recs = getRecommendations(prefs,user,sim)
+            to_restore = copy[user].pop(item)
+            # del prefs[user][item]
+            recs = getRecommendations(copy,user,sim)
             for rec in recs:
                 if rec[1] == item:
                     err_list.append(to_restore - rec[0])
-                    error += (to_restore - rec[0])**2
-            prefs[user][item] = to_restore
-    error = error / len(err_list)
-    return error, err_list
+                    sq_error += (to_restore - rec[0])**2
+                    abs_error += abs(to_restore - rec[0])
+            copy[user][item] = to_restore
+    MSE = sq_error / len(err_list)
+    MAE = abs_error / len(err_list)
+
+    print("MSE : " + str(MSE))
+    print("RMSE : " + str(sqrt(MSE)))
+    print("MAE :" + str(MAE))
+
+def topMatches(prefs,person,similarity=calc_pearson, n=5):
+    '''
+        Returns the best matches for person from the prefs dictionary
+
+        Parameters:
+        -- prefs: dictionary containing user-item matrix
+        -- person: string containing name of user
+        -- similarity: function to calc similarity (sim_pearson is default)
+        -- n: number of matches to find/return (5 is default)
+        
+        Returns:
+        -- A list of similar matches with 0 or more tuples, 
+           each tuple contains (similarity, item name).
+           List is sorted, high to low, by similarity.
+           An empty list is returned when no matches have been calc'd.
+        
+    '''     
+    scores=[(similarity(prefs,person,other),other) 
+                    for other in prefs if other!=person]
+    scores.sort()
+    scores.reverse()
+    return scores[0:n]
+
+def transformPrefs(prefs):
+    '''
+        Transposes U-I matrix (prefs dictionary) 
+
+        Parameters:
+        -- prefs: dictionary containing user-item matrix
+        
+        Returns:
+        -- A transposed U-I matrix, i.e., if prefs was a U-I matrix, 
+           this function returns an I-U matrix
+        
+    '''     
+    result={}
+    for person in prefs:
+        for item in prefs[person]:
+            result.setdefault(item,{})
+            # Flip item and person
+            result[item][person]=prefs[person][item]
+    return result
+
+def calculateSimilarItems(prefs,n=10,similarity=calc_pearson):
+
+    '''
+        Creates a dictionary of items showing which other items they are most 
+        similar to. 
+
+        Parameters:
+        -- prefs: dictionary containing user-item matrix
+        -- n: number of similar matches for topMatches() to return
+        -- similarity: function to calc similarity (sim_pearson is default)
+        
+        Returns:
+        -- A dictionary with a similarity matrix
+        
+    '''     
+    result={}
+    # Invert the preference matrix to be item-centric
+    itemPrefs=transformPrefs(prefs)
+    c=0
+    for item in itemPrefs:
+      # Status updates for larger datasets
+        c+=1
+        if c%100==0: 
+            print ("%d / %d") % (c,len(itemPrefs))
+            
+        # Find the most similar items to this one
+        scores=topMatches(itemPrefs,item,similarity,n=n)
+        result[item]=scores
+    return result
+
+def getRecommendedItems(prefs,itemMatch,user):
+    '''
+        Calculates recommendations for a given user 
+
+        Parameters:
+        -- prefs: dictionary containing user-item matrix
+        -- person: string containing name of user
+        -- similarity: function to calc similarity (sim_pearson is default)
+        
+        Returns:
+        -- A list of recommended items with 0 or more tuples, 
+           each tuple contains (predicted rating, item name).
+           List is sorted, high to low, by predicted rating.
+           An empty list is returned when no recommendations have been calc'd.
+        
+    '''    
+    userRatings=prefs[user]
+    scores={}
+    totalSim={}
+    # Loop over items rated by this user
+    for (item,rating) in userRatings.items( ):
+  
+      # Loop over items similar to this one
+        for (similarity,item2) in itemMatch[item]:
+    
+            # Ignore if this user has already rated this item
+            if item2 in userRatings: continue
+            # ignore scores of zero or lower
+            if similarity<=0: continue            
+            # Weighted sum of rating times similarity
+            scores.setdefault(item2,0)
+            scores[item2]+=similarity*rating
+            # Sum of all the similarities
+            totalSim.setdefault(item2,0)
+            totalSim[item2]+=similarity
+  
+    # Divide each total score by total weighting to get an average
+
+    rankings=[(score/totalSim[item],item) for item,score in scores.items( )]    
+  
+    # Return the rankings from highest to lowest
+    rankings.sort( )
+    rankings.reverse( )
+    return rankings
+
+def get_all_II_recs(prefs, itemsim, sim_method, num_users=10, top_N=5):
+    ''' 
+    Print item-based CF recommendations for all users in dataset
+
+    Parameters
+    -- prefs: U-I matrix (nested dictionary)
+    -- itemsim: item-item similarity matrix (nested dictionary)
+    -- sim_method: name of similarity method used to calc sim matrix (string)
+    -- num_users: max number of users to print (integer, default = 10)
+    -- top_N: max number of recommendations to print per user (integer, default = 5)
+
+    Returns: None
+    
+    '''
+
+    for user in prefs:
+        print("Item-based CF recs for " + user + " , " + str(sim_method) + " : " + str(getRecommendedItems(prefs, itemsim, user)))
+
+def loo_cv_sim(prefs, metric, sim, algo, sim_matrix):
+    """
+    Leave-One_Out Evaluation: evaluates recommender system ACCURACY
+     
+     Parameters:
+         prefs dataset: critics, etc.
+	 metric: MSE, or MAE, or RMSE
+	 sim: distance, pearson, etc.
+	 algo: user-based recommender, item-based recommender, etc.
+         sim_matrix: pre-computed similarity matrix
+	 
+    Returns:
+         error_total: MSE, or MAE, or RMSE totals for this set of conditions
+	 error_list: list of actual-predicted differences
+    """
+
+    # error_total, error_list  = loo_cv_sim(prefs, metric, sim, algo, itemsim)
+
+    copy = prefs.copy()
+    sq_error = 0
+    ab_error = 0
+    err_list = []
+    for user in prefs:
+        copy[user] = prefs[user].copy()
+    for user in prefs:
+        for item in prefs[user]:
+            to_restore = copy[user].pop(item)
+            # del prefs[user][item]
+            recs = algo(copy,sim_matrix,user)
+            for rec in recs:
+                if rec[1] == item:
+                    err_list.append(to_restore - rec[0])
+                    sq_error += (to_restore - rec[0])**2
+                    ab_error += abs(to_restore - rec[0])
+            copy[user][item] = to_restore
+    MSE = sq_error / len(err_list)
+    MAE = ab_error / len(err_list)
+
+    if metric == "RMSE":
+        return sqrt(MSE), err_list
+    elif metric == "MAE":
+        return MAE, err_list
+    else:
+        return MSE, err_list
 
 def main():
     ''' User interface for Python console '''
@@ -369,7 +560,8 @@ def main():
     print('\npath: %s' % path) # debug
     done = False
     prefs = {}
-    
+    itemsim = {}
+
     while not done: 
         print()
         # Start a simple dialog
@@ -381,7 +573,10 @@ def main():
                         'D(istance) critics data, '
                         'PC(earson Correlation) critics data?, '
                         'U(ser-based CF Recommendations)?, '
-                        'LCV(eave one out cross-validation)? ')
+                        'LCV(eave one out cross-validation)?, '
+                        'Sim(ilarity matrix) calc for Item-based recommender?, '
+                        'IT(em-based CF Recommendations)?, '
+                        'LCVSIM(eave one out cross-validation)?, ')
         
         if file_io == 'R' or file_io == 'r':
             print()
@@ -444,7 +639,7 @@ def main():
         elif file_io == 'PC' or file_io == 'pc':
             print()
             if len(prefs) > 0:    
-                sim_pearson(prefs)
+                calc_pearson(prefs)
                 print()
                 
             else:
@@ -463,17 +658,127 @@ def main():
                 print()
             else:
                 print ('Empty dictionary, R(ead) in some data!')   
+
         elif file_io == 'LCV' or file_io == 'lcv':
             print()
             if len(prefs) > 0:             
-                print ('Example:')            
-                ## add some code here to calc LOOCV 
-                ## write a new function to do this ..
-                # error, error_list = loo_cv(prefs, metric, sim, algo)
-                print(loo_cv(prefs, "MSE", calc_pearson,"user-based"))
+                print("distance")
+                loo_cv(prefs, "MSE", sim_distance,"user-based")
+                print()
+                print("pearson")
+                loo_cv(prefs, "MSE", sim_pearson,"user-based")
             else:
                 print ('Empty dictionary, R(ead) in some data!')         
-            
+        
+        elif file_io == 'Sim' or file_io == 'sim':
+            print()
+            if len(prefs) > 0: 
+                ready = False # sub command in progress
+                sub_cmd = input('RD(ead) distance or RP(ead) pearson or WD(rite) distance or WP(rite) pearson? ')
+                try:
+                    if sub_cmd == 'RD' or sub_cmd == 'rd':
+                        # Load the dictionary back from the pickle file.
+                        itemsim = pickle.load(open( "save_itemsim_distance.p", "rb" ))
+                        sim_method = 'sim_distance'
+    
+                    elif sub_cmd == 'RP' or sub_cmd == 'rp':
+                        # Load the dictionary back from the pickle file.
+                        itemsim = pickle.load(open( "save_itemsim_pearson.p", "rb" ))  
+                        sim_method = 'sim_pearson'
+                        
+                    elif sub_cmd == 'WD' or sub_cmd == 'wd':
+                        # transpose the U-I matrix and calc item-item similarities matrix
+                        itemsim = calculateSimilarItems(prefs,similarity=sim_distance)                     
+                        # Dump/save dictionary to a pickle file
+                        pickle.dump(itemsim, open( "save_itemsim_distance.p", "wb" ))
+                        sim_method = 'sim_distance'
+                        
+                    elif sub_cmd == 'WP' or sub_cmd == 'wp':
+                        # transpose the U-I matrix and calc item-item similarities matrix
+                        itemsim = calculateSimilarItems(prefs,similarity=sim_pearson)                     
+                        # Dump/save dictionary to a pickle file
+                        pickle.dump(itemsim, open( "save_itemcalc_pearson.p", "wb" )) 
+                        sim_method = 'sim_pearson'
+                    
+                    else:
+                        print("Sim sub-command %s is invalid, try again" % sub_cmd)
+                        continue
+                    
+                    ready = True # sub command completed successfully
+                    
+                except Exception as ex:
+                    print ('Error!!', ex, '\nNeed to W(rite) a file before you can R(ead) it!'
+                           ' Enter S(im) again and choose a Write command')
+                    print()
+                
+
+                if len(itemsim) > 0 and ready == True: 
+                    # Only want to print if sub command completed successfully
+                    print ('Similarity matrix based on %s, len = %d' 
+                           % (sim_method, len(itemsim)))
+                    print()
+                    ##
+                    ## enter new code here, or call a new function, 
+                    ##    to print the sim matrix
+                    ##
+                    print(itemsim)
+                print()
+                
+            else:
+                print ('Empty dictionary, R(ead) in some data!') 
+
+        elif file_io == 'IT' or file_io == 'it':
+            print()
+            if len(prefs) > 0 and len(itemsim) > 0:                
+
+                print()
+                
+                print('Item-based CF recommendations for all users:')
+                    
+                get_all_II_recs(prefs, itemsim, sim_method) # num_users=10, and top_N=5 by default  '''
+                
+                print()
+                
+            else:
+                if len(prefs) == 0:
+                    print ('Empty dictionary, R(ead) in some data!')
+                else:
+                    print ('Empty similarity matrix, use Sim(ilarity) to create a sim matrix!') 
+
+        elif file_io == 'LCVSIM' or file_io == 'lcvsim':
+            print()
+            if len(prefs) > 0 and itemsim !={}:             
+                print('LOO_CV_SIM Evaluation')
+                if len(prefs) == 7:
+                    prefs_name = 'critics'
+
+                metric = input ('Enter error metric: MSE, MAE, RMSE: ')
+                if metric == 'MSE' or metric == 'MAE' or metric == 'RMSE' or \
+		        metric == 'mse' or metric == 'mae' or metric == 'rmse':
+                    metric = metric.upper()
+                else:
+                    metric = 'MSE'
+                algo = getRecommendedItems ## Item-based recommendation
+                
+                if sim_method == 'sim_pearson': 
+                    sim = sim_pearson
+                    error_total, error_list  = loo_cv_sim(prefs, metric, sim, algo, itemsim)
+                    print('%s for %s: %.5f, len(SE list): %d, using %s' 
+			  % (metric, prefs_name, error_total, len(error_list), sim) )
+                    print()
+                elif sim_method == 'sim_distance':
+                    sim = sim_distance
+                    error_total, error_list  = loo_cv_sim(prefs, metric, sim, algo, itemsim)
+                    print('%s for %s: %.5f, len(SE list): %d, using %s' 
+			  % (metric, prefs_name, error_total, len(error_list), sim) )
+                    print()
+                else:
+                    print('Run S(im) command to create/load Sim matrix!')
+                if prefs_name == 'critics':
+                    print(error_list)
+            else:
+                print ('Empty dictionary, run R(ead) OR Empty Sim Matrix, run Sim!')
+
         else:
             done = True
     
